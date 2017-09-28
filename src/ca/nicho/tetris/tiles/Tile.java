@@ -1,22 +1,13 @@
 package ca.nicho.tetris.tiles;
 
-import java.util.Random;
-
-public enum Tile {
-	T(new boolean[][]{{false, true}, {true, true}, {false, true}}),
-	STRAIGHT(new boolean[][]{{true}, {true}, {true}, {true}}),
-	RIGHTZ(new boolean[][]{{false, true, true}, {true, true, false}}),
-	RIGHTL(new boolean[][]{{true, true, true}, {true, false, false}}),
-	LEFTZ(new boolean[][]{{true, true, false}, {false, true, true}}),
-	LEFTL(new boolean[][]{{true, false, false}, {true, true, true}}),
-	SQUARE(new boolean[][]{{true, true}, {true, true}});
+public abstract class Tile {
 	
-	public boolean[][] original;
+	public static final int TILE_COUNT = 7;
+	
 	public boolean[][] tile;
 		
 	Tile(boolean[][] tile){
 		this.tile = tile;
-		this.original = tile;
 	}
 	
 	public void rotateRight(){
@@ -49,6 +40,22 @@ public enum Tile {
 			s += "\n";
 		}
 		return s;
+	}
+	
+	public static Tile getTile(int value){
+		
+		if(value >= 7) throw new IllegalArgumentException("Value must be between 0-6 inclusive");
+		
+		switch(value){
+			case 0: return new TileLeftL();
+			case 1: return new TileLeftZ();
+			case 2: return new TileRightL();
+			case 3: return new TileRightZ();
+			case 4: return new TileSquare();
+			case 5: return new TileStraight();
+			case 6: return new TileT();
+		}
+		return null;
 	}
 	
 }

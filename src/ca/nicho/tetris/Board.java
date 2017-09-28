@@ -10,8 +10,8 @@ public class Board {
 	public static final int BOARD_WIDTH = 10;
 	public static final int BOARD_HEIGHT = 24;
 	
-	public static final int PLACEMENT_SCORE_WEIGHT = 50;
-	public static final int CLEAR_LINE_WEIGHT = 100;
+	public static final int PLACEMENT_SCORE_WEIGHT = 10;
+	public static final int CLEAR_LINE_WEIGHT = 20;
 	
 	public boolean isFinished;
 	
@@ -23,6 +23,7 @@ public class Board {
 		
 	public int lastFlatnessScore = 0;
 	
+	public int lastScore;
 	public int score;
 	public long frameCount;
 	
@@ -108,8 +109,7 @@ public class Board {
 	
 	public void spawnNextTile(){
 		
-		currentTile = Tile.values()[random.nextInt(Tile.values().length)];
-		currentTile.tile = currentTile.original; //Resets any rotations that may have been applied
+		currentTile = Tile.getTile(random.nextInt(Tile.TILE_COUNT));
 		
 		currentX = 4;
 		currentY = 0;
@@ -173,7 +173,6 @@ public class Board {
 				for(int dy = 0; dy < currentTile.tile[0].length; dy++){
 					if(currentTile.tile[dx][dy]){
 						if(currentX + dx >= tiles.length){
-							System.out.println("X Overflow " + currentTile.ordinal());
 							continue;
 						}
 						tiles[currentX + dx][currentY + dy] = true;
@@ -185,7 +184,8 @@ public class Board {
 		int placementScore = getPlacementScore();
 		int linesScore = checkForLines() * CLEAR_LINE_WEIGHT;
 				
-		score += placementScore + linesScore;
+		lastScore = placementScore + linesScore;
+		score += lastScore;
 				
 	}
 	
@@ -201,7 +201,8 @@ public class Board {
 				delta += (tiles[x][y]) ? 1 : -1;
 			}
 		}
-		return Math.abs(delta * PLACEMENT_SCORE_WEIGHT - (Board.BOARD_HEIGHT - currentY)); //Only want to return scores >= 0
+		int score = delta * PLACEMENT_SCORE_WEIGHT - (Board.BOARD_HEIGHT - currentY);
+		return (score > 0) ? score : 0; //Only want to return scores >= 0
 	}
 	
 	public void gameEnded(){

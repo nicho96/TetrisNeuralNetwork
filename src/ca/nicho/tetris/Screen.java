@@ -117,7 +117,8 @@ public class Screen extends JPanel {
 					}
 				}
 				g.setColor(Color.orange);
-				g.drawString("Score " + board.score, 10, 10);
+				g.drawString("Score " + board.score, getWidth() - 100, 10);
+				g.drawString("Score " + board.lastScore, getWidth() - 100, 30);
 		
 	}
 	

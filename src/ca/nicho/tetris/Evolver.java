@@ -22,12 +22,11 @@ public class Evolver {
 	
 	public void perspectiveNetwork(){
 		
-		long time = System.currentTimeMillis();
 		int iteration = 0;
 		
 		ArrayList<NeuralNetwork> networks = new ArrayList<NeuralNetwork>();
 				
-		for(int i = 0; i < 20; i++){
+		for(int i = 0; i < 40; i++){
 			NeuralNetwork net = new NeuralNetwork(PerspectiveNeuralNetworkController.INPUT_SIZE, 3);
 			net.generateRandomNetwork();
 			networks.add(net);
@@ -48,35 +47,25 @@ public class Evolver {
 					b.simulate();
 				}
 			
-				for(int i = 0; i < 1000; i++){
+				for(int i = 0; i < 100; i++){
 					NeuralNetwork net = localMax.copy();
 					net.randomMutation();
 					
 					Board b = new Board(BOARD_SEED);
 					b.setController(new PerspectiveNeuralNetworkController(b, net));
 					b.simulate();	
-									
+										
 					if(net.score > localMax.score){
 						localMax = net;
 					}
 				
 				}
 				
-				if(localMax == networks.get(ind)){
-					localMax.simulationCount += 1;
-					if(localMax.simulationCount == 5){
-						NeuralNetwork net = new NeuralNetwork(PerspectiveNeuralNetworkController.INPUT_SIZE, 3);
-						net.generateRandomNetwork();
-						networks.set(ind, net);
-					}
-				}else{
-					networks.set(ind, localMax);
-				}
-				
-				if(localMax == networks.get(ind)){
-					System.out.print((localMax == networks.get(ind)) ? "*" : "+");
-				}
-				
+				localMax.simulationCount++;
+				networks.set(ind, localMax);
+
+				System.out.print('*');
+	
 			}
 			
 			long endTime = System.currentTimeMillis();
@@ -85,11 +74,23 @@ public class Evolver {
 			
 			Collections.sort(networks);
 			Collections.reverse(networks);
+			
 	
+			//Purge any stagnant networks that are not top 10%
+			for(int i = 0; i < networks.size(); i++){
+				if(i > networks.size() / 10){
+					if(networks.get(i).simulationCount > 10){
+						NeuralNetwork net = new NeuralNetwork(PerspectiveNeuralNetworkController.INPUT_SIZE, 3);
+						net.generateRandomNetwork();
+						networks.set(i, net);
+					}
+				}
+			}
+			
 			NeuralNetwork maxNet = networks.get(0);
 			
-			File f = new File(DIR_PATH, time + "-net.dat");
-			File f2 = new File(DIR_PATH, time + "-net2.dat");
+			File f = new File(DIR_PATH, "net.dat");
+			File f2 = new File(DIR_PATH, "net2.dat");
 			maxNet.save(f);
 			maxNet.save(f2); //Save 2 so at least 1 will be intact
 			

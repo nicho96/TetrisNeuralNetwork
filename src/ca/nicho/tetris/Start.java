@@ -3,6 +3,7 @@ package ca.nicho.tetris;
 import java.awt.Dimension;
 import java.io.File;
 
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 
 import ca.nicho.neuralnet.NeuralNetwork;
@@ -19,7 +20,7 @@ public class Start extends JFrame {
 		if(EVOLVING) new Evolver();
 		else{
 			Board board = new Board(Evolver.BOARD_SEED);
-			NeuralNetwork net = new NeuralNetwork(new File("networks/1506374543334-net.dat"));
+			NeuralNetwork net = new NeuralNetwork(new File("networks/net2.dat"));
 						
 			PerspectiveNeuralNetworkController controller = new PerspectiveNeuralNetworkController(board, net);
 			board.setController(controller);

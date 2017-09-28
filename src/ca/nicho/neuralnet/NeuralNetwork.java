@@ -414,7 +414,7 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 	
 	public void randomMutation(){
 		
-		for(int i = 0; i < random.nextInt(10) + 1; i++){
+		for(int i = 0; i < random.nextInt(neurons.size()) + 1; i++){
 			//Determine type of mutation
 			double r = random.nextDouble();
 			
@@ -517,6 +517,25 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 		}
 		
 		return nn;
+	}
+	
+	/**
+	 * Utility function which removes redundant neurons and axons (has no effect on the functionality of the network).
+	 */
+	public void minimize(){
+		for(int i = 0; i < layers.size() - 1; i++){
+			Layer l = layers.get(i);
+			for(int j = 0; j < l.neurons.size(); j++){
+				Neuron n = l.neurons.get(j);
+				if(n.inputs.size() == 0){
+					for(Axon a : n.outputs){
+						a.output.inputs.remove(a);
+						axons.remove(a);
+					}
+					neurons.remove(n);
+				}
+			}
+		}
 	}
 			
 }
