@@ -8,12 +8,11 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Random;
 
 public class NeuralNetwork implements Comparable<NeuralNetwork> {
 
-	
-	
 	public static final float ACTIVATION_THRESHOLD = 0.5F;
 	public static final int RANDOM_NEURON_MAX = 3;
 	public static final int RANDOM_AXON_MAX = 10;
@@ -21,38 +20,84 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 	public static double sigmoid(double x) {
 		return (1/( 1 + Math.pow(Math.E,(-1*x))));
 	}
-	
-	private Random random;
-	public long seed;
-	
+
 	public ArrayList<Axon> axons = new ArrayList<Axon>();
-	public ArrayList<Layer> layers = new ArrayList<Layer>();
-	public ArrayList<Neuron> neurons = new ArrayList<Neuron>();
+	public HashMap<Long, Axon> axonsMap = new HashMap<Long, Axon>();
 	
-	public int maxLayerSize;
+	public ArrayList<Layer> layers = new ArrayList<Layer>();
+	
+	public ArrayList<Neuron> neurons = new ArrayList<Neuron>();
+	public HashMap<Long, Neuron> neuronsMap = new HashMap<Long, Neuron>();
+	
+	public int maxLayerSize = 1;
 	public int score = -1; //Negative score means it has not found one yet
 	
 	public int simulationCount;
 	
+	public ArrayList<Neuron> hidden = new ArrayList<Neuron>();
 	public Neuron[] inputs;
 	public Neuron[] outputs;
 	
 	public boolean inputLayerCreated;
 	public boolean outputLayerCreated;
 	
+	public long maxInnovation;
+	
 	//Keep a cached version of the output layer available to make moving it easier
-	private Layer outputLayer;
+	public Layer outputLayer;
 	
 	/**
+	 * Creates a new blank neural network
 	 * @param inputSize Determines how many input neurons there should be
 	 * @param outputSize Determines how many output neurons there are
-	 * @param seed Makes the randomness seeded (and thus can be recreated later)
+	 * @param hiddenLayers Determines how many hidden layers exist
 	 */
-	public NeuralNetwork(int inputSize, int outputSize, long seed){
+	public NeuralNetwork(int inputSize, int outputSize, int hiddenLayers){
 		inputs = new Neuron[inputSize];
 		outputs = new Neuron[outputSize];
-		this.seed = seed;
-		random = new Random(seed);
+		
+		this.createInputLayer();
+		this.createHiddenLayers(hiddenLayers);
+		this.createOutputLayer();
+	}
+	
+	/**
+	 * Creates a carbon copy of a neural network, without sharing any memory references (are functionally independent)
+	 * @param parent the network to be cloned
+	 */
+	public NeuralNetwork(NeuralNetwork parent){
+		
+		inputs = new Neuron[parent.inputs.length];
+		outputs = new Neuron[parent.outputs.length];
+		
+		createInputLayer();
+		createHiddenLayers(parent.layers.size() - 2);
+		createOutputLayer();
+				
+		for(Neuron n : parent.neurons){
+			createNeuron(layers.get(n.layer.index), n.neuronID);
+		}
+				
+		for(Axon a : parent.axons){
+			int ii = a.input.indexInLayer;
+			int il = a.input.layer.index;
+			int oi = a.output.indexInLayer;
+			int ol = a.output.layer.index;
+			connectNeurons(layers.get(il).neurons.get(ii), layers.get(ol).neurons.get(oi), a.weight, a.enabled, a.innovation);
+		}
+		
+		for(int i = 0; i < layers.get(0).neurons.size(); i++){
+			inputs[i] = layers.get(0).neurons.get(i);
+		}
+		
+		for(int i = 0; i < layers.get(layers.size() - 1).neurons.size(); i++){
+			outputs[i] = layers.get(layers.size() - 1).neurons.get(i);
+		}
+				
+		this.score = parent.score;
+		
+		computeMaxLayerSize();
+				
 	}
 	
 	/**
@@ -80,7 +125,8 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 			for(int i = 0; i < layerCount; i++){
 				int neuronCount = input.readInt();
 				for(int j = 0; j < neuronCount; j++){
-					this.createNeuron(layers.get(i));
+					long neuronID = input.readLong();
+					this.createNeuron(layers.get(i), neuronID);
 				}
 			}
 			
@@ -94,7 +140,9 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 				int l2 = input.readInt();
 				int i2 = input.readInt();
 				double weight = input.readDouble();
-				this.connectNeurons(layers.get(l1).neurons.get(i1), layers.get(l2).neurons.get(i2), weight);
+				boolean enabled = input.readBoolean();
+				long innovation = input.readLong();
+				this.connectNeurons(layers.get(l1).neurons.get(i1), layers.get(l2).neurons.get(i2), weight, enabled, innovation);
 			}
 			
 			input.close();
@@ -120,36 +168,7 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 		}
 		
 	}
-	
-	/**
-	 * @param inputSize Determines how many input neurons there should be
-	 * @param outputSize Determines how many output neurons there are
-	 */
-	public NeuralNetwork(int inputSize, int outputSize){
-		inputs = new Neuron[inputSize];
-		outputs = new Neuron[outputSize];
-		this.seed = System.currentTimeMillis();
-		random = new Random(seed);
-	}
-	
-	/**
-	 * Populates the input array
-	 */
-	public void prepareInputs(){
-		for(int i = 0; i < inputs.length; i++){
-			inputs[i] = createNeuron(layers.get(0)); //Negative will prevent it from being added as a layer in the network.
-		}
-	}
-	
-	/**
-	 * This function should only be called after all layers have been created. It will add the output neurons to the network.
-	 */
-	public void prepareOutputs(){
-		for(int i = 0; i < outputs.length; i++){
-			outputs[i] = createNeuron(outputLayer);
-		}
-	}
-	
+
 	/**
 	 * @param outputs this array is expected to be the same length as specified by inputSize in the constructor.
 	 */
@@ -177,19 +196,35 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 	 * @param to output neuron
 	 * @param weight how much this connection should be weighed.
 	 */
-	public void connectNeurons(Neuron from, Neuron to, double weight){
+	public void connectNeurons(Neuron from, Neuron to, double weight, boolean enabled, long innovation){
 		
 		if(from.layer.index >= to.layer.index && to.layer.index >= 0){
-			System.out.println(from.layer + " " + to.layer);
 			System.out.println("WARNING: Neuron connected to same or earlier layer level. This could lead to loops");
 		}
 		
-		Axon a = new Axon(from, to, weight);
+		Axon a = new Axon(from, to, weight, innovation);
+		a.enabled = enabled;
 		from.outputs.add(a);
 		to.inputs.add(a);
 		
+		axonsMap.put(innovation, a);
 		axons.add(a);
 		
+		if(maxInnovation < innovation){
+			innovation = maxInnovation;
+		}
+		
+	}
+	
+	/**
+	 * Connect two neurons to one another, with an axon in between
+	 * @param from input neuron
+	 * @param to output neuron
+	 * @param weight how much this connection should be weighed.
+	 * @param innovation the innovation number of the axon
+	 */
+	public void connectNeurons(Neuron from, Neuron to, double weight, long innovation){
+		connectNeurons(from, to, weight, true, innovation);
 	}
 	
 	/**
@@ -197,10 +232,15 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 	 * @param layer the layer that it is being added to.
 	 * @return the newly created neuron
 	 */
-	public Neuron createNeuron(Layer l){
-		Neuron n = new Neuron(l, l.neurons.size());
+	public Neuron createNeuron(Layer l, long neuronID){
+		Neuron n = new Neuron(l, l.neurons.size(), neuronID);
 		l.add(n);
 		neurons.add(n);
+		neuronsMap.put(neuronID, n);
+		if(l.index != 0 && l.index != layers.size() - 1){
+			hidden.add(n);
+		}
+		
 		return n;
 	}
 	
@@ -218,23 +258,12 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 	}
 	
 	/**
-	 * Create a new layer in the next available position. This will ensure the output layer is at the end.
+	 * Create the hidden layers. This should be called before creating the output layer
 	 */
-	public Layer createNewLayer(boolean addNeuron){
-		if(!inputLayerCreated || !outputLayerCreated){
-			System.out.println("WARNING - Input or Output layers should be created first.");
+	public void createHiddenLayers(int amount){
+		for(int i = 0; i < amount; i++){
+			layers.add(new Layer(layers.size()));
 		}
-		
-		layers.remove(outputLayer);
-		Layer l = new Layer(layers.size());
-		layers.add(l);
-		outputLayer.index = layers.size();
-		layers.add(outputLayer);
-		
-		if(addNeuron)
-			createNeuron(l);
-		
-		return l;
 	}
 	
 	/**
@@ -262,46 +291,7 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 			}
 		}
 	}
-	
-	/**
-	 * Create a copy of the network
-	 * @return a copy of the network, completely independent from one another (no cross-references that would break the network)
-	 */
-	public NeuralNetwork copy(){
-		NeuralNetwork net = new NeuralNetwork(inputs.length, outputs.length);
-		
-		net.createInputLayer();
-		net.createOutputLayer();
-				
-		for(int i = 0; i < layers.size() - 2; i++){
-			net.createNewLayer(false);
-		}
-				
-		for(Neuron n : neurons){
-			net.createNeuron(net.layers.get(n.layer.index));
-		}
-		
-		for(Axon a : axons){
-			int ii = a.input.index;
-			int il = a.input.layer.index;
-			int oi = a.output.index;
-			int ol = a.output.layer.index;
-			net.connectNeurons(net.layers.get(il).neurons.get(ii), net.layers.get(ol).neurons.get(oi), a.weight);
-		}
-		
-		for(int i = 0; i < net.layers.get(0).neurons.size(); i++){
-			net.inputs[i] = net.layers.get(0).neurons.get(i);
-		}
-		
-		for(int i = 0; i < net.layers.get(net.layers.size() - 1).neurons.size(); i++){
-			net.outputs[i] = net.layers.get(net.layers.size() - 1).neurons.get(i);
-		}
-				
-		net.computeMaxLayerSize();
-		
-		return net;
-	}
-	
+
 	/**
 	 * Prints basic info about the network
 	 */
@@ -320,55 +310,17 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 	}
 	
 	/**
-	 * Generates a random network (unless NeuralNetwork.random is seeded, in which case it's constant)
-	 */
-	public void generateRandomNetwork(){
-		
-		this.createInputLayer();
-		this.createOutputLayer();
-		this.createNewLayer(true);
-		
-		prepareInputs();
-		prepareOutputs();
-		
-		//Create x amount of neurons
-		for(int i = 0; i < random.nextInt(RANDOM_NEURON_MAX); i++){
-			Layer l = null;
-			if(random.nextInt(30) == 0){
-				l = this.createNewLayer(true);
-			}else{
-				l = getRandomNonIOLayer();
-			}
-			createNeuron(l);
-		}
-		
-		for(int i = 0; i < random.nextInt(RANDOM_AXON_MAX); i++){
-			randomNeuronConnection();
-		}
-		
-		this.computeMaxLayerSize();
-				
-	}
-	
-	/**
-	 * Utility function that will return a non input/output layer
-	 * @return
-	 */
-	public Layer getRandomNonIOLayer(){
-		return layers.get(random.nextInt(layers.size() - 2) + 1);
-	}
-	
-	/**
-	 * 
+	 * Computes a sum value of the network. It's very unlikely that two networks share the same sum, unless they are identical networks (though not impossible)
 	 * @return
 	 */
 	public double generateSum(){
 		double sum = 0;
 		for(Neuron n : this.neurons){
-			sum += n.value + n.inputs.size() + n.outputs.size();
+			sum += n.inputs.size() + n.outputs.size();
 		}
 		for(Axon a : this.axons){
-			sum += a.weight;
+			if(a.enabled)
+				sum += Math.abs(a.weight);
 		}
 		return sum;
 	}
@@ -388,6 +340,9 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 			//Write number of neurons per layer
 			for(Layer l : layers){
 				stream.writeInt(l.neurons.size());
+				for(Neuron n : l.neurons){
+					stream.writeLong(n.neuronID);
+				}
 			}
 			
 			//Write amount of axons
@@ -396,10 +351,12 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 			//Write layers and indices by input and input in that order (l1, i1 -> l2, i2) for all axons followed by its weight
 			for(Axon a : axons){
 				stream.writeInt(a.input.layer.index);
-				stream.writeInt(a.input.index);
+				stream.writeInt(a.input.indexInLayer);
 				stream.writeInt(a.output.layer.index);
-				stream.writeInt(a.output.index);
+				stream.writeInt(a.output.indexInLayer);
 				stream.writeDouble(a.weight);
+				stream.writeBoolean(a.enabled);
+				stream.writeLong(a.innovation);
 			}
 			
 			stream.close();
@@ -412,130 +369,36 @@ public class NeuralNetwork implements Comparable<NeuralNetwork> {
 		
 	}
 	
-	public void randomMutation(){
-		
-		for(int i = 0; i < random.nextInt(neurons.size()) + 1; i++){
-			//Determine type of mutation
-			double r = random.nextDouble();
-			
-			if(r < 0.1){ //10% chance
-				removeRandomNeuronConnection();
-			}else if(r < 0.3){ //30% chance
-				randomAxonWeightChange();
-			}else if(r < 0.4){
-				createNeuron(layers.get(random.nextInt(layers.size() - 2) + 1));
-			}else if(r < 0.90){ //
-				randomNeuronConnection();
-			}else{
-				createNewLayer(true);
-			}
-		}
-		
-	}
-
-	private void randomNeuronConnection(){
-		Layer l1 = layers.get(Math.min(random.nextInt(layers.size() - 2), random.nextInt(layers.size() - 2)));
-		int r2 = random.nextInt(layers.size() - l1.index - 1) + l1.index + 1;
-		Layer l2 = layers.get(r2);
-		Neuron n1 = l1.neurons.get(random.nextInt(l1.neurons.size()));
-		Neuron n2 = l2.neurons.get(random.nextInt(l2.neurons.size()));
-		this.connectNeurons(n1, n2, random.nextDouble() * 2 - 1);
-	}
-	
-	private void randomAxonWeightChange(){
-		if(axons.size() == 0) //No axons to change
-			return;
-		Axon a = axons.get(random.nextInt(axons.size()));
-		a.weight = random.nextDouble() * 2 - 1;
-	}
-	
-	private void removeRandomNeuronConnection(){
-		if(axons.size() == 0) //No axons to change
-			return;
-		Axon a = axons.get(random.nextInt(axons.size()));
-		a.input.outputs.remove(a);
-		a.output.inputs.remove(a);
-	}
-
-	@Override
-	public String toString(){
-		return this.score + "";
-	}
-	
 	public int compareTo(NeuralNetwork other) {
 		
 		if(this.score < other.score){
 			return -1;
 		}else if(this.score > other.score){
 			return 1;
+		}else{
+			if(this.generateSum() > other.generateSum()){
+				return -1;
+			}else if(this.generateSum() < other.generateSum()){
+				return 1;
+			}
 		}
 		
 		return 0;
 	}
 	
-	public void mutateWeights(double frequency){
+	public int getDisabledNeuronCount(){
+		int count = 0;
 		for(Axon a : axons){
-			if(random.nextDouble() < frequency){
-				a.weight = random.nextDouble() * 2 - 1;
+			if(!a.enabled){
+				count ++;
 			}
 		}
+		return count;
 	}
 	
-	public void breedWith(NeuralNetwork net, double frequency){
-		for(int i = 0; i < net.axons.size(); i++){
-			if(random.nextDouble() < frequency){
-				this.axons.get(i).weight = net.axons.get(i).weight;
-			}
-		}
+	@Override
+	public String toString(){
+		return this.score + "";
 	}
 	
-	public static NeuralNetwork createPopulatedNeuralNetwork(int inputs, int outputs, int hiddenLayers, int widthOfLayers){
-		
-		NeuralNetwork nn = new NeuralNetwork(inputs, outputs);
-		nn.createInputLayer();
-		nn.createOutputLayer();
-		nn.prepareInputs();
-		nn.prepareOutputs();
-		for(int i = 0; i < hiddenLayers; i++){
-			nn.createNewLayer(false);
-		}
-		
-		//Populate the layers
-		for(int i = 1; i < nn.layers.size() - 1; i++){
-			for(int k = 0; k < widthOfLayers; k++){
-				nn.createNeuron(nn.layers.get(i));
-			}
-		}
-		
-		//Make the connections
-		for(int i = 0; i < nn.layers.size() - 1; i++){
-			for(int j = 0; j < nn.layers.get(i).neurons.size(); j++){
-				for(int k = 0; k < nn.layers.get(i + 1).neurons.size(); k++){
-					nn.connectNeurons(nn.layers.get(i).neurons.get(j), nn.layers.get(i + 1).neurons.get(k), nn.random.nextDouble() * 2 - 1);
-				}
-			}
-		}
-		
-		return nn;
-	}
-	
-	/**
-	 * Utility function which removes redundant neurons and axons (has no effect on the functionality of the network).
-	 */
-	public void minimize(){
-		for(int i = 0; i < layers.size() - 1; i++){
-			Layer l = layers.get(i);
-			for(int j = 0; j < l.neurons.size(); j++){
-				Neuron n = l.neurons.get(j);
-				if(n.inputs.size() == 0){
-					for(Axon a : n.outputs){
-						a.output.inputs.remove(a);
-						axons.remove(a);
-					}
-					neurons.remove(n);
-				}
-			}
-		}
-	}
-			
 }

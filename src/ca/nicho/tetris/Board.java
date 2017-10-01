@@ -10,8 +10,9 @@ public class Board {
 	public static final int BOARD_WIDTH = 10;
 	public static final int BOARD_HEIGHT = 24;
 	
+	public static final int HEIGHT_WEIGHT = 2;
 	public static final int PLACEMENT_SCORE_WEIGHT = 10;
-	public static final int CLEAR_LINE_WEIGHT = 20;
+	public static final int CLEAR_LINE_WEIGHT = 0;
 	
 	public boolean isFinished;
 	
@@ -201,8 +202,9 @@ public class Board {
 				delta += (tiles[x][y]) ? 1 : -1;
 			}
 		}
-		int score = delta * PLACEMENT_SCORE_WEIGHT - (Board.BOARD_HEIGHT - currentY);
-		return (score > 0) ? score : 0; //Only want to return scores >= 0
+		int score = delta * PLACEMENT_SCORE_WEIGHT - HEIGHT_WEIGHT * (Board.BOARD_HEIGHT - currentY);
+		//System.out.println(score);
+		return score; //Only want to return scores >= 0
 	}
 	
 	public void gameEnded(){

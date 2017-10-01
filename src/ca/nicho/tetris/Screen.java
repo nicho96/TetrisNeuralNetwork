@@ -1,7 +1,9 @@
 package ca.nicho.tetris;
 
+import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 
@@ -11,12 +13,18 @@ import ca.nicho.neuralnet.Axon;
 import ca.nicho.neuralnet.Layer;
 import ca.nicho.neuralnet.NeuralNetwork;
 import ca.nicho.neuralnet.Neuron;
+import ca.nicho.tetris.controller.PerspectiveNeuralNetworkController;
 
 public class Screen extends JPanel {
 
 	public static final int TILE_SIZE = 25;
 	public static final int FRAME_WIDTH = TILE_SIZE * Board.BOARD_WIDTH;
 	public static final int FRAME_HEIGHT = TILE_SIZE * Board.BOARD_HEIGHT;
+	
+	
+	public Color POSITIVE_AXON = new Color(0x22F57E);
+	public Color NEGATIVE_AXON = new Color(0xF56822);
+	public Color DISABLED_AXON = new Color(0xFFFFFF);
 	
 	private BufferedImage image;
 	private int[] raster;
@@ -36,6 +44,7 @@ public class Screen extends JPanel {
 		image = new BufferedImage(FRAME_WIDTH, FRAME_HEIGHT, BufferedImage.TYPE_INT_RGB);
 		raster = ((DataBufferInt)image.getRaster().getDataBuffer()).getData();		
 		this.setFocusable(true);
+		this.setBackground(new Color(0xA4A4A4));
 	}
 	
 	public void setBoard(Board board){
@@ -51,15 +60,20 @@ public class Screen extends JPanel {
 		if(network != null && showOverlay){
 			drawPerspectiveNetwork(g);
 
-//			drawNetwork(g);
+			//drawNetwork(g);
 		}
 		
 	}
 	
-	public void drawPerspectiveNetwork(Graphics g){
+	public void drawPerspectiveNetwork(Graphics g2){
+		
+		Graphics2D g = (Graphics2D)g2;
+		g.setStroke(new BasicStroke(1));
+		
 		//Write the input neurons state
 		int dy = FRAME_HEIGHT / network.maxLayerSize; //Vertical distance between neurons
-		int dx = 20;
+		int dx = 100;
+		int offset = 0;
 				
 		for(int i = 0; i < network.inputs.length; i++){
 			Neuron n = network.inputs[i];
@@ -79,46 +93,57 @@ public class Screen extends JPanel {
 			for(Axon a : n.outputs){
 				if(a.output.layer.index > 0){
 					if(a.weight < 0){
-						g.setColor(Color.BLACK);
+						g.setColor(NEGATIVE_AXON);
 					}else{
-						g.setColor(Color.GRAY);
+						g.setColor(POSITIVE_AXON);
 					}
-					g.drawLine(xPos + 5, yPos + 5, FRAME_WIDTH + dx + a.output.layer.index * dx + 5, dy * a.output.index + 5);
+					if(!a.enabled){
+						g.setColor(DISABLED_AXON);
+					}
+					g.drawLine(xPos + 5, yPos + 5, FRAME_WIDTH + offset + a.output.layer.index * dx + 5, dy * a.output.indexInLayer + 5);
 				}
 			}
 			
 		}
 		
 		//Start at 1, layer 0 is reserved for the inputs
-				for(int i = 1; i < network.layers.size(); i++){
-					Layer l =  network.layers.get(i);
-					int xOff = FRAME_WIDTH + dx + i * dx;
-					for(int j = 0; j < l.neurons.size(); j++){
-						Neuron n = l.neurons.get(j);
-						int yOff = dy * j;
-						if(n.value > 0.5){
-							g.setColor(Color.GREEN);
+		for(int i = 1; i < network.layers.size(); i++){
+			Layer l =  network.layers.get(i);
+			int xOff = FRAME_WIDTH + offset + i * dx;
+			for(int j = 0; j < l.neurons.size(); j++){
+				Neuron n = l.neurons.get(j);
+				int yOff = dy * j;
+				if(n.value > 0.5){
+					g.setColor(Color.GREEN);
+				}else{
+					g.setColor(Color.RED);
+				}
+				g.fillOval(xOff, yOff, 10, 10);
+				
+				for(Axon a : n.outputs){
+					if(a.output.layer.index >= 0){
+						if(a.weight < 0){
+							g.setColor(NEGATIVE_AXON);
 						}else{
-							g.setColor(Color.RED);
+							g.setColor(POSITIVE_AXON);
 						}
-						g.fillOval(xOff, yOff, 10, 10);
-						
-						for(Axon a : n.outputs){
-							if(a.output.layer.index >= 0){
-								if(a.weight < 0){
-									g.setColor(Color.DARK_GRAY);
-								}else{
-									g.setColor(Color.white);
-								}
-								g.drawLine(xOff + 5, yOff + 5, FRAME_WIDTH + dx + a.output.layer.index * dx + 5, dy * a.output.index + 5);
-							}
+						if(!a.enabled){
+							g.setColor(DISABLED_AXON);
 						}
-						
+						g.drawLine(xOff + 5, yOff + 5, FRAME_WIDTH + offset + a.output.layer.index * dx + 5, dy * a.output.indexInLayer + 5);
 					}
 				}
-				g.setColor(Color.orange);
-				g.drawString("Score " + board.score, getWidth() - 100, 10);
-				g.drawString("Score " + board.lastScore, getWidth() - 100, 30);
+				
+			}
+		}
+				
+		g.setColor(Color.orange);
+		g.drawString("Score " + board.score, getWidth() - 100, 10);
+		g.drawString("Last Score " + board.lastScore, getWidth() - 100, 30);
+		if(board.controller instanceof PerspectiveNeuralNetworkController){
+			PerspectiveNeuralNetworkController controller = (PerspectiveNeuralNetworkController)board.controller;
+			g.drawString("Sum " + controller.network.generateSum(), getWidth() - 200, 50);
+		}
 		
 	}
 	
@@ -151,7 +176,7 @@ public class Screen extends JPanel {
 					}else{
 						g.setColor(Color.GRAY);
 					}
-					g.drawLine(xPos + 5, yPos + 5, FRAME_WIDTH + dx + a.output.layer.index * dx + 5, dy * a.output.index + 5);
+					g.drawLine(xPos + 5, yPos + 5, FRAME_WIDTH + dx + a.output.layer.index * dx + 5, dy * a.output.indexInLayer + 5);
 				}
 			}
 			
@@ -178,7 +203,7 @@ public class Screen extends JPanel {
 						}else{
 							g.setColor(Color.white);
 						}
-						g.drawLine(xOff + 5, yOff + 5, FRAME_WIDTH + dx + a.output.layer.index * dx + 5, dy * a.output.index + 5);
+						g.drawLine(xOff + 5, yOff + 5, FRAME_WIDTH + dx + a.output.layer.index * dx + 5, dy * a.output.indexInLayer + 5);
 					}
 				}
 				
@@ -248,9 +273,10 @@ public class Screen extends JPanel {
 			long last = System.currentTimeMillis();
 			
 			while(Start.GAME_RUNNING){
+				
 				long current = System.currentTimeMillis();
 				if(current - last > 10){
-										
+		
 					if(board == null){
 						continue;
 					}

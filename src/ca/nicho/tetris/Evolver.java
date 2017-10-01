@@ -2,12 +2,10 @@ package ca.nicho.tetris;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.Random;
+import java.util.Scanner;
 
 import ca.nicho.neuralnet.NeuralNetwork;
-import ca.nicho.tetris.controller.NeuralNetworkController;
 import ca.nicho.tetris.controller.PerspectiveNeuralNetworkController;
 
 public class Evolver {
@@ -16,160 +14,75 @@ public class Evolver {
 	
 	public static final File DIR_PATH = new File("networks");
 	
+	public ArrayList<Genome> genomes = new ArrayList<Genome>();
+	
+	public boolean isPaused = false;
+	
 	public Evolver(){
-		perspectiveNetwork();
-	}
-	
-	public void perspectiveNetwork(){
 		
-		int iteration = 0;
+		//new Thread(inputThread).start();
 		
-		ArrayList<NeuralNetwork> networks = new ArrayList<NeuralNetwork>();
-				
-		for(int i = 0; i < 40; i++){
-			NeuralNetwork net = new NeuralNetwork(PerspectiveNeuralNetworkController.INPUT_SIZE, 3);
-			net.generateRandomNetwork();
-			networks.add(net);
+		for(int amount = 0; amount < 10; amount++){
+			NeuralNetwork net = new NeuralNetwork(PerspectiveNeuralNetworkController.INPUT_SIZE, 3, 1);
+			
+			Genome genome = new Genome(net, 100, new Random());
+			genome.prepareInputs(net);
+			genome.prepareOutputs(net);
+			genome.simulateParent();
+			genome.populateInitial();
+			
+			genomes.add(genome);
 		}
 		
-		while(iteration < 100000){
-			
-			long startTime = System.currentTimeMillis();
-			
-			for(int ind = 0; ind < networks.size(); ind++){
-			
-				NeuralNetwork localMax = networks.get(ind);
-				
-				//Simulate if need be
-				if(localMax.score == -1){
-					Board b = new Board(BOARD_SEED);
-					b.setController(new PerspectiveNeuralNetworkController(b, localMax));
-					b.simulate();
-				}
-			
-				for(int i = 0; i < 100; i++){
-					NeuralNetwork net = localMax.copy();
-					net.randomMutation();
-					
-					Board b = new Board(BOARD_SEED);
-					b.setController(new PerspectiveNeuralNetworkController(b, net));
-					b.simulate();	
-										
-					if(net.score > localMax.score){
-						localMax = net;
-					}
-				
-				}
-				
-				localMax.simulationCount++;
-				networks.set(ind, localMax);
-
-				System.out.print('*');
-	
-			}
-			
-			long endTime = System.currentTimeMillis();
-			
-			System.out.println(" " + (endTime - startTime) / 1000 + "s to finish");
-			
-			Collections.sort(networks);
-			Collections.reverse(networks);
-			
-	
-			//Purge any stagnant networks that are not top 10%
-			for(int i = 0; i < networks.size(); i++){
-				if(i > networks.size() / 10){
-					if(networks.get(i).simulationCount > 10){
-						NeuralNetwork net = new NeuralNetwork(PerspectiveNeuralNetworkController.INPUT_SIZE, 3);
-						net.generateRandomNetwork();
-						networks.set(i, net);
-					}
-				}
-			}
-			
-			NeuralNetwork maxNet = networks.get(0);
-			
-			File f = new File(DIR_PATH, "net.dat");
-			File f2 = new File(DIR_PATH, "net2.dat");
-			maxNet.save(f);
-			maxNet.save(f2); //Save 2 so at least 1 will be intact
-			
-			System.out.println("Done iteration " + iteration + ". Max score: " + maxNet.score + " simulationCount: " + maxNet.simulationCount + ", sum: " + maxNet.generateSum());
-			
-			iteration++;
-			
-		}
+		runSimulation();
 		
 	}
 	
-	public void fullNetwork(){
+	public void runSimulation(){
 		
-		int iteration = 0;
-		
-		ArrayList<NeuralNetwork> networks = new ArrayList<NeuralNetwork>();
-		
-		for(int i = 0; i < 20; i++){
-			networks.add(NeuralNetwork.createPopulatedNeuralNetwork(Board.BOARD_HEIGHT * Board.BOARD_WIDTH, 3, 1, Board.BOARD_HEIGHT * Board.BOARD_WIDTH));
-		}
-						
-		while(iteration < 100000){
-			
-			NeuralNetwork maxNet = null;
-			int max = 0;
-			int sum = 0;
-						
-			for(int ind = 0; ind < networks.size(); ind++){
-			
-				//Copy and create a random mutation of the board
-				NeuralNetwork network = networks.get(ind);
-				
-				Board b = new Board(BOARD_SEED);
-				b.setController(new NeuralNetworkController(b, network));
-				b.simulate();		
-				
-				if(network.score > max){
-					maxNet = network;
-					max = network.score;
-				}
-				
-				sum += network.score;
-									
-				System.out.print("*");
-								
-			}
-			
-			System.out.println();
-			
-			Collections.sort(networks);
-			Collections.reverse(networks);
-						
-			for(int i = networks.size() / 10; i < networks.size(); i++){
-				NeuralNetwork mutated = networks.get((int)(Math.random() * 10)).copy();
-				if(Math.random() < 0.8){
-					mutated.breedWith(networks.get((int)(Math.random() * networks.size())), 0.5);
-				}
-				mutated.mutateWeights(0.1);
-				networks.set(i, mutated);
-			}
-			
-			File f = new File(DIR_PATH, "net.dat");
-			File f2 = new File(DIR_PATH, "net2.dat");
-			maxNet.save(f);
-			maxNet.save(f2); //Save 2 so at least 1 will be intact
-			
-			System.out.println("Done iteration " + iteration + ". Max score: " + maxNet.score + " simulationCount: " + maxNet.simulationCount + ", sum: " + maxNet.generateSum() + ", average: " + (sum / networks.size()));
-			
-			iteration++;
-			
+		if(isPaused){
+			isPaused = false;
 		}
 		
-		
+		while(!isPaused){
+			
+			int bestScore = 0;
+			Genome best = null;
+			
+			for(Genome genome : genomes){
+				genome.nextGeneration();
+				if(bestScore < genome.max.score){
+					bestScore = genome.max.score;
+					best = genome;
+				}
+			}
+			
+			System.out.println("Generation: " + best.generation + " - Fittest: " + best.max + ", sum: " + best.max.generateSum());
+			
+			best.max.save(new File(DIR_PATH, "1layers.dat"));
+			
+		}
 	}
 	
-	public NeuralNetwork randomNetwork(){
-		NeuralNetwork net = new NeuralNetwork(Board.BOARD_HEIGHT * Board.BOARD_WIDTH, 3);
-		net.generateRandomNetwork();
-		return net;
+	public void pauseSimulation(){
+		isPaused = true;
 	}
+	
+	private Scanner sc = new Scanner(System.in);
+	
+	Runnable inputThread = () -> {
+		System.out.print("> ");
+		String input = sc.nextLine();
+		if(input.toLowerCase().equals("p")){
+			this.pauseSimulation();
+			System.out.println("Will pause after simulation cycle ends.");
+		}else if(input.toLowerCase().equals("s")){
+			this.runSimulation();
+			System.out.println("Resuming iterations");
+		}else if(input.toLowerCase().equals("e")){
+			sc.close();
+			System.out.println("Will close after simulation cycle ends.");
+		}
+	};
 	
 }

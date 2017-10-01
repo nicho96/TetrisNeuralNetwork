@@ -2,8 +2,8 @@ package ca.nicho.tetris;
 
 import java.awt.Dimension;
 import java.io.File;
+import java.util.Random;
 
-import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 
 import ca.nicho.neuralnet.NeuralNetwork;
@@ -15,13 +15,15 @@ public class Start extends JFrame {
 	
 	public static boolean EVOLVING = false;
 	
-	public static void main(String[] s){
-			
+	public static void main(String[] s){		
+		
 		if(EVOLVING) new Evolver();
 		else{
 			Board board = new Board(Evolver.BOARD_SEED);
-			NeuralNetwork net = new NeuralNetwork(new File("networks/net2.dat"));
 						
+			NeuralNetwork net = new NeuralNetwork(new File("networks/1layers.dat"));
+			System.out.println("Disabled Neurons: " + net.getDisabledNeuronCount());
+		
 			PerspectiveNeuralNetworkController controller = new PerspectiveNeuralNetworkController(board, net);
 			board.setController(controller);
 			Start start = new Start();
